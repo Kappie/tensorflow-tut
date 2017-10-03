@@ -32,7 +32,7 @@ def my_model_fn(features, labels, mode, params):
     print(features)
     M, N = features.get_shape().as_list()[-2:]
     print("let's scatter!")
-    scattering_coefficients = Scattering(M=M, N=N, J=1, L=2)(features)
+    scattering_coefficients = Scattering(M=M, N=N, J=2, L=8)(features)
     print(scattering_coefficients)
     # batch_size = scattering_coefficients.get_shape().as_list()[0]
     # throw all coefficients into single vector for each image
@@ -49,7 +49,7 @@ def my_model_fn(features, labels, mode, params):
     y_predict = tf.nn.softmax(tf.matmul(scattering_coefficients, W) + b)
 
     if mode == tf.estimator.ModeKeys.PREDICT:
-        return tf.estimator.EstimatorSpec(mode=mode, predictions={"predictions": y_predict})
+        return tf.estimator.EstimatorSpec(mode=mode, predictions={"prediction": y_predict})
 
     # loss function and training step
     cross_entropy = tf.reduce_mean( tf.nn.softmax_cross_entropy_with_logits(labels=labels, logits=y_predict) )
@@ -65,6 +65,22 @@ def my_model_fn(features, labels, mode, params):
         train_op=train_op)
 
 
+def calculate_accuracy(y_true, y_predicted):
+    n_samples = 0
+    n_correct = 0
+
+    for index, prediction in enumerate(y_predicted):
+        prediction = prediction["prediction"]
+        predicted_class = np.argmax(prediction)
+        true_class = np.argmax(y_true[index])
+        if predicted_class == true_class:
+            n_correct += 1
+        n_samples += 1
+
+    return (n_correct/n_samples, n_samples)
+
+
+
 # def sample_batch(X, y, batch_size):
 #     """
 #     Returns Tensors feature_cols, labels
@@ -74,9 +90,9 @@ def my_model_fn(features, labels, mode, params):
 #     return {"x": tf.convert_to_tensor(X[idx])}, tf.convert_to_tensor(y[idx])
 
 
-LEARNING_RATE = 0.001
-BATCH_SIZE = 1
-n_training_steps = 5000
+LEARNING_RATE = 0.1
+BATCH_SIZE = 128
+n_training_steps = 1000
 image_dimension = 28
 n_classes = 10
 model_params = {"learning_rate": LEARNING_RATE}
@@ -97,6 +113,8 @@ X_validation = normalize(X_validation)
 # X_validation = tf.reshape(X_validation, (-1, 1, image_dimension, image_dimension))
 X_validation = X_validation.reshape(-1, 1, image_dimension, image_dimension)
 y_validation = mnist.validation.labels.astype(np.int64)
+
+print(y_validation)
 
 # train_input_fn = lambda: sample_batch(X_train, y_train, BATCH_SIZE)
 # validation_input_fn = lambda: sample_batch(X_validation, y_validation, BATCH_SIZE)
@@ -123,5 +141,4 @@ scattering_classifier.train(input_fn=train_input_fn, steps=n_training_steps)
 print("start scoring accuracy")
 predictions = scattering_classifier.predict(input_fn=validation_input_fn)
 
-for p in predictions:
-    print(p)
+print(calculate_accuracy(y_validation, predictions))

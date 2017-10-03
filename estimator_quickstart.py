@@ -27,15 +27,21 @@ def my_model_fn(features, labels, mode, params):
     params: additional hyperparameters
     """
 
+    print(features)
+    features = features["x"]
+    print(features)
     M, N = features.get_shape().as_list()[-2:]
+    print("let's scatter!")
     scattering_coefficients = Scattering(M=M, N=N, J=1, L=2)(features)
-    batch_size = scattering_coefficients.get_shape().as_list()[0]
+    print(scattering_coefficients)
+    # batch_size = scattering_coefficients.get_shape().as_list()[0]
     # throw all coefficients into single vector for each image
-    scattering_coefficients = tf.reshape(scattering_coefficients, [batch_size, -1])
+    # scattering_coefficients = tf.reshape(scattering_coefficients, [batch_size, -1])
+    dimensions = scattering_coefficients.get_shape().as_list()[1:]
+    scattering_coefficients = tf.reshape(scattering_coefficients, [-1, np.prod(dimensions)])
+    print(scattering_coefficients)
     n_classes = 10
     n_coefficients = scattering_coefficients.get_shape().as_list()[1]
-
-    print(scattering_coefficients)
 
     # use linear classifier
     W = tf.Variable(tf.zeros([n_coefficients, n_classes]))
@@ -47,7 +53,11 @@ def my_model_fn(features, labels, mode, params):
 
     # loss function and training step
     cross_entropy = tf.reduce_mean( tf.nn.softmax_cross_entropy_with_logits(labels=labels, logits=y_predict) )
-    train_op = tf.train.GradientDescentOptimizer(params["learning_rate"]).minimize(cross_entropy)
+    train_op = tf.train.GradientDescentOptimizer(params["learning_rate"]).minimize(
+        cross_entropy, global_step=tf.train.get_global_step())
+
+    # train_op = tf.train.GradientDescentOptimizer(learning_rate=params["learning_rate"]).minimize(
+    #     loss=loss)
 
     return tf.estimator.EstimatorSpec(
         mode=mode,
@@ -55,18 +65,18 @@ def my_model_fn(features, labels, mode, params):
         train_op=train_op)
 
 
-def sample_batch(X, y, batch_size):
-    """
-    Returns Tensors feature_cols, labels
-    """
-    print("inputting sample batch")
-    idx = np.random.choice(X.shape[0], batch_size, replace=False)
-    return tf.convert_to_tensor(X[idx]), tf.convert_to_tensor(y[idx])
+# def sample_batch(X, y, batch_size):
+#     """
+#     Returns Tensors feature_cols, labels
+#     """
+#     print("inputting sample batch")
+#     idx = np.random.choice(X.shape[0], batch_size, replace=False)
+#     return {"x": tf.convert_to_tensor(X[idx])}, tf.convert_to_tensor(y[idx])
 
 
-LEARNING_RATE = 0.01
+LEARNING_RATE = 0.001
 BATCH_SIZE = 1
-n_training_steps = 2
+n_training_steps = 5000
 image_dimension = 28
 n_classes = 10
 model_params = {"learning_rate": LEARNING_RATE}
@@ -88,16 +98,30 @@ X_validation = normalize(X_validation)
 X_validation = X_validation.reshape(-1, 1, image_dimension, image_dimension)
 y_validation = mnist.validation.labels.astype(np.int64)
 
-train_input_fn = lambda: sample_batch(X_train, y_train, BATCH_SIZE)
-validation_input_fn = lambda: sample_batch(X_validation, y_validation, BATCH_SIZE)
+# train_input_fn = lambda: sample_batch(X_train, y_train, BATCH_SIZE)
+# validation_input_fn = lambda: sample_batch(X_validation, y_validation, BATCH_SIZE)
+train_input_fn = tf.estimator.inputs.numpy_input_fn(
+    x={"x": X_train},
+    y=y_train,
+    num_epochs=None,
+    shuffle=True,
+    batch_size=BATCH_SIZE
+)
+validation_input_fn = tf.estimator.inputs.numpy_input_fn(
+    x={"x": X_validation},
+    batch_size=X_validation.shape[0],
+    num_epochs=1,
+    shuffle=False
+)
 
 # Train
 scattering_classifier = tf.estimator.Estimator(model_fn=my_model_fn, params=model_params)
 print("start training")
-scattering_classifier.train(input_fn=train_input_fn, max_steps=n_training_steps)
+scattering_classifier.train(input_fn=train_input_fn, steps=n_training_steps)
 
 # Score accuracy
 print("start scoring accuracy")
 predictions = scattering_classifier.predict(input_fn=validation_input_fn)
 
-print(predictions)
+for p in predictions:
+    print(p)
